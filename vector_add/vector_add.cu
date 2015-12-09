@@ -67,8 +67,8 @@ int main() {
     //setup the grid and thread blocks
     int block_size = 1024;                          //thread block size
     int nblocks = int(ceilf(n/(float)block_size));  //problem size divided by thread block size rounded up
-    dim3 grid(nblocks);
-    dim3 threads(block_size);
+    dim3 grid(nblocks, 1);
+    dim3 threads(block_size, 1, 1);
 
     //measure the GPU function
     start_timer();
