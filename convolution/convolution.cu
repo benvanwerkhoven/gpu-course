@@ -162,6 +162,7 @@ int main() {
 
 
     //measure the GPU function
+    cudaDeviceSynchronize();
     start_timer();
     convolution_kernel<<<grid, threads>>>(d_output, d_input, d_filter);
     cudaDeviceSynchronize();

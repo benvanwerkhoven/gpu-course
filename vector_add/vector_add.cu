@@ -71,6 +71,7 @@ int main() {
     dim3 threads(block_size, 1, 1);
 
     //measure the GPU function
+    cudaDeviceSynchronize();
     start_timer();
     vec_add_kernel<<<grid, threads>>>(d_c, d_a, d_b, n);
     cudaDeviceSynchronize();
