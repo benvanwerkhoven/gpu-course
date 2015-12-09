@@ -7,6 +7,7 @@ extern "C" {
 }
 
 #define N 1000
+#define BS 100
 
 int main() {
 
@@ -89,7 +90,6 @@ int main() {
     printf("kji loop order took %.6f ms\n", time);
 
     //tiled
-    int BS=40;
     start_timer();
     for (i=0; i<N/BS; i++) {
         for (k=0; k<N/BS; k++) {
@@ -108,8 +108,6 @@ int main() {
     }
     stop_timer(&time);
     printf("tiled loop order took %.6f ms\n", time);
-
-
 
     return 0;
 }
