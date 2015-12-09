@@ -237,24 +237,6 @@ int compare_arrays(float *a1, float *a2, int n) {
             }
         }
 
-        /*
-        unsigned int int_a1 = *(unsigned int *)(a1+i);
-        unsigned int int_a2 = *(unsigned int *)(a2+i);
-        unsigned int dist = (unsigned int)0;
-        if (int_a1 > int_a2) {
-            dist = int_a1 - int_a2;
-        } else {
-            dist = int_a2 - int_a1;
-        }
-        if (dist > 0) {
-            errors++;
-            if (print < 10) {
-                print++;
-                fprintf(stderr, "Error detected at i=%d, \t a1= \t %10.7e \t a2= \t %10.7e \t ulp_dist=\t %u\n",i,a1[i],a2[i],dist);
-            }
-        }
-        */
-
         float diff = (a1[i]-a2[i])/a1[i];
         if (diff > 1e-6f) {
             errors++;
