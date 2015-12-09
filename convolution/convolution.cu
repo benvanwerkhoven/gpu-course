@@ -110,6 +110,7 @@ int main() {
     dim3 grid(int(ceilf(image_width/(float)threads.x)), int(ceilf(image_height/(float)threads.y)) );
 
     //measure the GPU function
+    cudaDeviceSynchronize();
     start_timer();
     convolution_kernel<<<grid, threads>>>(d_output, d_input, d_filter);
     cudaDeviceSynchronize();
