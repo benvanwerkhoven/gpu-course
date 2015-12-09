@@ -7,7 +7,7 @@ extern "C" {
 }
 
 #define N 1000
-#define BS 100
+#define BS 100      //cache size matters, try 100 on DAS-5 and 50 on DAS-4
 
 int main() {
 
