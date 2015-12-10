@@ -75,8 +75,14 @@ __global__ void convolution_kernel_shared_mem(float *output, float *input, float
     //the size of the border needed for the computation
     __shared__ float sh_input[block_size_y+border_height][block_size_x+border_width];
 
-    //this loop loads all values needed by this thread block from global memory (input)
-    //into the smaller shared memory (sh_input)
+    //Write a for loop that loads all values needed by this thread block
+    //from global memory (input) and stores it into shared memory (sh_input)
+    //that is local to this thread block
+    //for ( ... ) {
+        //for ( ... ) {
+            //...
+        //}
+    //}
     for (int i=ty; i<block_size_y+border_height; i+=block_size_y) {
         for (int j=tx; j<block_size_x+border_width; j+=block_size_x) {
             sh_input[i][j] = input[(by+i)*input_width + (bx+j)];
