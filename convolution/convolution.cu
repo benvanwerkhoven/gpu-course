@@ -16,8 +16,6 @@ int compare_arrays(float *c, float *d, int n);
 #define block_size_x 32
 #define block_size_y 16
 
-__constant__ float c_filter[filter_height*filter_width];
-
 #define border_height ((filter_height/2)*2)
 #define border_width ((filter_width/2)*2)
 #define input_height (image_height + border_height)
@@ -52,7 +50,7 @@ __global__ void convolution_kernel(float *output, float *input, float *filter) {
     //for each filter weight
     for (int i=0; i < filter_height; i++) {
         for (int j=0; j < filter_width; j++) {
-            sum += input[(y+i)*input_width+x+j] * c_filter[i*filter_width+j];
+            sum += input[(y+i)*input_width+x+j] * filter[i*filter_width+j];
         }
     }
 
@@ -83,11 +81,6 @@ __global__ void convolution_kernel_shared_mem(float *output, float *input, float
             //...
         //}
     //}
-    for (int i=ty; i<block_size_y+border_height; i+=block_size_y) {
-        for (int j=tx; j<block_size_x+border_width; j+=block_size_x) {
-            sh_input[i][j] = input[(by+i)*input_width + (bx+j)];
-        }
-    }
 
     //synchronize to make all writes visible to all threads within the thread block
     __syncthreads();
@@ -98,9 +91,8 @@ __global__ void convolution_kernel_shared_mem(float *output, float *input, float
     //for each filter weight
     for (int i=0; i < filter_height; i++) {
         for (int j=0; j < filter_width; j++) {
-            // Oops! I forgot to actually use sh_input instead of input! Please fix me!
-            //sum += input[(y+i)*input_width+x+j] * filter[i*filter_width+j];
-            sum += sh_input[ty+i][tx+j] * c_filter[i*filter_width+j];
+            // Oops! I forgot to actually use sh_input instead of input! Please fix it!
+            sum += input[(y+i)*input_width+x+j] * filter[i*filter_width+j];
         }
     }
 
@@ -152,8 +144,6 @@ int main() {
     err = cudaMemcpy(d_input, input, input_height*input_width*sizeof(float), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemcpy host to device input: %s\n", cudaGetErrorString( err ));
     err = cudaMemcpy(d_filter, filter, filter_height*filter_width*sizeof(float), cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemcpy host to device filter: %s\n", cudaGetErrorString( err ));
-    err = cudaMemcpyToSymbol(c_filter, filter, filter_height*filter_width*sizeof(float), 0, cudaMemcpyHostToDevice);
     if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemcpy host to device filter: %s\n", cudaGetErrorString( err ));
 
     //zero the output array
