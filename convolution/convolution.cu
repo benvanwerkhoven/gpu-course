@@ -110,6 +110,7 @@ int main() {
 
     float time;
     cudaError_t err;
+    int errors = 0;
 
     //allocate arrays and fill them
     float *input = (float *) malloc(input_height * input_width * sizeof(float));
@@ -134,28 +135,27 @@ int main() {
     //allocate GPU memory
     float *d_input; float *d_output; float *d_filter;
     err = cudaMalloc((void **)&d_input, input_height*input_width*sizeof(float));
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMalloc d_input: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMalloc d_input: %s\n", cudaGetErrorString( err )); errors++; }
     err = cudaMalloc((void **)&d_output, image_height*image_width*sizeof(float));
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMalloc d_output: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMalloc d_output: %s\n", cudaGetErrorString( err )); errors++; }
     err = cudaMalloc((void **)&d_filter, filter_height*filter_width*sizeof(float));
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMalloc d_filter: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMalloc d_filter: %s\n", cudaGetErrorString( err )); errors++; }
 
     //copy the input data to the GPU
     err = cudaMemcpy(d_input, input, input_height*input_width*sizeof(float), cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemcpy host to device input: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMemcpy host to device input: %s\n", cudaGetErrorString( err )); errors++; }
     err = cudaMemcpy(d_filter, filter, filter_height*filter_width*sizeof(float), cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemcpy host to device filter: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMemcpy host to device filter: %s\n", cudaGetErrorString( err )); errors++; }
 
     //zero the output array
     err = cudaMemset(d_output, 0, image_height*image_width*sizeof(float));
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemset output: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMemset output: %s\n", cudaGetErrorString( err )); errors++; }
 
     //setup the grid and thread blocks
     //thread block size
     dim3 threads(block_size_x, block_size_y);
     //problem size divided by thread block size rounded up
     dim3 grid(int(ceilf(image_width/(float)threads.x)), int(ceilf(image_height/(float)threads.y)) );
-
 
     //measure the GPU function
     cudaDeviceSynchronize();
@@ -167,20 +167,25 @@ int main() {
 
     //check to see if all went well
     err = cudaGetLastError();
-    if (err != cudaSuccess) fprintf(stderr, "Error during kernel launch convolution_kernel: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error during kernel launch convolution_kernel: %s\n", cudaGetErrorString( err )); errors++; }
 
     //copy the result back to host memory
     err = cudaMemcpy(output2, d_output, image_height*image_width*sizeof(float), cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemcpy device to host output: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMemcpy device to host output: %s\n", cudaGetErrorString( err )); errors++; }
 
     //check the result
-    int errors = compare_arrays(output1, output2, image_height*image_width);
+    errors += compare_arrays(output1, output2, image_height*image_width);
     if (errors > 0) {
         printf("TEST FAILED! %d errors!\n", errors);
     } else {
         printf("TEST PASSED!\n");
     }
 
+    //zero the output arrays
+    errors = 0;
+    memset(output2, 0, image_height*image_width*sizeof(float));
+    err = cudaMemset(d_output, 0, image_height*image_width*sizeof(float));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMemset output: %s\n", cudaGetErrorString( err )); errors++; }
 
     //measure the GPU function
     start_timer();
@@ -191,20 +196,19 @@ int main() {
 
     //check to see if all went well
     err = cudaGetLastError();
-    if (err != cudaSuccess) fprintf(stderr, "Error during kernel launch convolution_kernel_shared_mem: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error during kernel launch convolution_kernel_shared_mem: %s\n", cudaGetErrorString( err )); errors++; }
 
     //copy the result back to host memory
     err = cudaMemcpy(output2, d_output, image_height*image_width*sizeof(float), cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemcpy device to host output: %s\n", cudaGetErrorString( err ));
+    if (err != cudaSuccess) { fprintf(stderr, "Error in cudaMemcpy device to host output: %s\n", cudaGetErrorString( err )); errors++; }
 
     //check the result
-    errors = compare_arrays(output1, output2, image_height*image_width);
+    errors += compare_arrays(output1, output2, image_height*image_width);
     if (errors > 0) {
         printf("TEST FAILED! %d errors!\n", errors);
     } else {
         printf("TEST PASSED!\n");
     }
-
 
     //clean up
     cudaFree(d_output);
