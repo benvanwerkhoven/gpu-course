@@ -201,15 +201,15 @@ void convolvution2d_explicit(float *image, float *scratch, int scratchWidth, int
     // for tiled kernel use this grid
     dim3 grid ((int) ceilf ((float) WIDTH / (float) (TILE_X * BLOCK_X)), (int) ceilf ((float) HEIGHT / (float) (BLOCK_Y)));
 
-    //copy h_filter to constant memory symbol d_filter (host to device)
+    //TODO: copy h_filter to constant memory symbol d_filter (host to device)
     // err = cudaMemcpyToSymbol(...);
 
-    //copy scratch in host memory to device memory d_scratch (host to device)
+    //TODO: copy scratch in host memory to device memory d_scratch (host to device)
 
-    //call the CUDA kernel instead of this CPU function
+    //TODO: call the CUDA kernel instead of this CPU function
     convolvution2d(h_image, h_scratch, h_filter, scratchWidth, scratchHeight, filterWeight);
 
-    //copy output data in d_image back to host memory array image (device to host)
+    //TODO: copy output data in d_image back to host memory array image (device to host)
 
     //force the host to wait for all device operations to be completed - do not remove
     cudaDeviceSynchronize();
