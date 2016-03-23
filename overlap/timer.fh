@@ -1,0 +1,19 @@
+!
+! Fortrain 90 interface block for two simple functions that allow the use of the timer
+! implemented in C++ in timer.cc and timer.h
+!
+! @author Ben van Werkhoven <b.vanwerkhoven@esciencecenter.nl>
+!
+
+interface 
+
+	subroutine start_timer ( ) bind (c)
+	  use iso_c_binding
+	end subroutine start_timer
+
+	subroutine stop_timer ( time ) bind (c)
+	  use iso_c_binding
+	  real (c_float) :: time
+	end subroutine stop_timer
+
+end interface
