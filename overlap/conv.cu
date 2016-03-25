@@ -25,8 +25,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define image_height 1024
-#define image_width 1024
+#define image_height 6144
+#define image_width 6144
 #define filter_height 17
 #define filter_width 17
 
@@ -39,7 +39,7 @@
 #define input_height (image_height + border_height)
 #define input_width (image_width + border_width)
 
-#define ITERATIONS 5
+#define ITERATIONS 10
 
 #ifdef USE_READ_ONLY_CACHE
 #define LDG(x) __ldg(x)
