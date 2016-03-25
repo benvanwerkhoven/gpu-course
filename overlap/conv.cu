@@ -39,7 +39,7 @@
 #define input_height (image_height + border_height)
 #define input_width (image_width + border_width)
 
-#define ITERATIONS 5
+#define ITERATIONS 10
 
 #ifdef USE_READ_ONLY_CACHE
 #define LDG(x) __ldg(x)
