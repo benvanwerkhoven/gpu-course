@@ -25,16 +25,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define WIDTH 6144
-#define HEIGHT 6144
+#define image_height 1024
+#define image_width 1024
+#define filter_height 17
+#define filter_width 17
 
-#define FW 17
-#define FH 17
+#define block_size_x 16
+#define block_size_y 16
+#define tile_size_x 4
 
-#define BLOCK_X 16
-#define BLOCK_Y 16
-
-#define TILE_X 4
+#define border_height ((filter_height/2)*2)
+#define border_width ((filter_width/2)*2)
+#define input_height (image_height + border_height)
+#define input_width (image_width + border_width)
 
 #define ITERATIONS 5
 
@@ -45,28 +48,29 @@
 #endif
 
 extern "C" {
-  void convolvution2d(float *image, float *scratch, float *filter, int scratchWidth, int scratchHeight, float filterWeight);
-  void convolvution2d_explicit(float *image, float *scratch, int scratchWidth, int scratchHeight, float filterWeight);
-  void convolvution2d_streams(float *image, float *scratch, int scratchWidth, int scratchHeight, float filterWeight);
+  void convolution2d_explicit(float *image, float *input, float *filter);
+  void convolution2d_streams(float *image, float *input, float *filter);
 
   void start_timer();
   void stop_timer(float *);
 
   int compare(float *a, float *b, int N);
 
-  __global__ void convolvution2d_kernel_naive(float *image, float *scratch, int scratchWidth, int scratchHeight, float filterWeight);
-  __global__ void convolvution2d_kernel(float *__restrict__ iPtr, const float *__restrict__ sPtr, int totalWidth, int scratchHeight, float divisor);
+  void convolution2d(float *image, float *input, float *filter);
+  __global__ void convolution2d_kernel_naive(float *image, float *input);
+  __global__ void convolution2d_kernel(float *__restrict__ image, const float *__restrict__ input);
 }
 
+//host memory pointers
 float *h_filter;
 float *h_image;
 float *h_imageref;
-float *h_scratch;
-float filterWeight = 0.0;
+float *h_input;
 
-__constant__ float d_filter[FW * FH];
+//device memory 
+__constant__ float d_filter[filter_width*filter_height];
 float *d_image;
-float *d_scratch;
+float *d_input;
 
 int main() {
     cudaError_t err;
@@ -76,59 +80,60 @@ int main() {
     cudaDeviceSynchronize();
 
     //allocate host memory
-    h_imageref = (float *) malloc(WIDTH * HEIGHT * sizeof(float));
+    h_imageref = (float *) malloc(image_width * image_height * sizeof(float));
     if (!h_imageref) {
         fprintf(stderr, "Error in malloc: h_imageref\n");
     }
 
-    h_filter = (float *) malloc(FW * FH * sizeof(float));
-    if (!h_filter) {
-        fprintf(stderr, "Error in malloc: h_filter\n");
+    err = cudaHostAlloc(&h_filter, filter_width * filter_height * sizeof(float), cudaHostAllocMapped);
+    if (err != cudaSuccess) {
+        fprintf (stderr, "Error in cudaHostAlloc h_filter: %s\n", cudaGetErrorString(err));
     }
 
-    h_image = (float *) malloc(WIDTH * HEIGHT * sizeof(float));
-    if (!h_image) {
-        fprintf(stderr, "Error in malloc: h_image\n");
+    err = cudaHostAlloc(&h_image, image_width * image_height * sizeof(float), cudaHostAllocMapped);
+    if (err != cudaSuccess) {
+        fprintf (stderr, "Error in cudaHostAlloc h_image: %s\n", cudaGetErrorString(err));
     }
 
-    h_scratch = (float *) malloc((WIDTH + FW - 1) * (HEIGHT + FH - 1) * sizeof(float));
-    if (!h_scratch) {
-        fprintf(stderr, "Error in malloc: h_scratch\n");
+    err = cudaHostAlloc(&h_input, input_width * input_height * sizeof(float), cudaHostAllocMapped);
+    if (err != cudaSuccess) {
+        fprintf (stderr, "Error in cudaHostAlloc h_input: %s\n", cudaGetErrorString(err));
     }
 
-    //fill host memory
-    for (int y = 0; y < HEIGHT + FH - 1; y++) {
-        for (int x = 0; x < WIDTH + FW - 1; x++) {
-            int r = rand ();
-            h_scratch[y * (WIDTH + FW - 1) + x] = 1.0 + r % 254;
+    //fill the input image including border
+    for (int y = 0; y < input_height; y++) {
+        for (int x = 0; x < input_width; x++) {
+            int r = rand();
+            h_input[y * input_width + x] = 1.0 + r % 254;
         }
     }
 
-    for (int y = 0; y < FH; y++) {
-        for (int x = 0; x < FW; x++) {
-            int r = rand ();
+    //fill the filter
+    for (int y = 0; y < filter_height; y++) {
+        for (int x = 0; x < filter_width; x++) {
+            int r = rand();
             float w = 0.001 + (r % 999) / 1000.0;
-            h_filter[y * FW + x] = w;
-            filterWeight += w;
+            h_filter[y * filter_width + x] = w;
         }
     }
 
-    memset (h_image, 0, WIDTH * HEIGHT * sizeof (float));
+    memset(h_image, 0, image_width * image_height * sizeof (float));
+    memset(h_imageref, 0, image_width * image_height * sizeof (float));
 
     //allocate device memory
-    err = cudaMalloc ((void **) &d_image, WIDTH * HEIGHT * sizeof(float));
+    err = cudaMalloc ((void **) &d_image, image_width * image_height * sizeof(float));
     if (err != cudaSuccess) {
         fprintf (stderr, "Error in cudaMalloc d_image: %s\n", cudaGetErrorString(err));
     }
 
-    err = cudaMemset (d_image, 0, WIDTH * HEIGHT * sizeof(float));
+    err = cudaMemset (d_image, 0, image_width * image_height * sizeof(float));
     if (err != cudaSuccess) {
         fprintf (stderr, "Error in cudaMemset d_image: %s\n", cudaGetErrorString(err));
     }
 
-    err = cudaMalloc ((void **) &d_scratch, (WIDTH + FW - 1 ) * ( HEIGHT + FH - 1) * sizeof(float));
+    err = cudaMalloc ((void **) &d_input, input_width * input_height * sizeof(float));
     if (err != cudaSuccess) {
-        fprintf (stderr, "Error in cudaMalloc d_scratch: %s\n", cudaGetErrorString(err));
+        fprintf (stderr, "Error in cudaMalloc d_input: %s\n", cudaGetErrorString(err));
     }
 
     //error checking
@@ -138,42 +143,52 @@ int main() {
         fprintf (stderr, "Error after memory setup: %s\n", cudaGetErrorString(err));
     }
 
+    //compute reference answer using naive kernel and mapped memory
+    dim3 threads(block_size_x, block_size_y);
+    dim3 grid((int)ceilf((float)image_width / (float)(block_size_x)) , (int)ceilf((float)image_height / (float)(block_size_y))); 
+    err = cudaMemcpyToSymbol(d_filter, h_filter, filter_width * filter_height * sizeof(float), 0, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        fprintf (stderr, "Error in cudaMemcpyToSymbol filter: %s\n", cudaGetErrorString(err));
+    }
+    convolution2d_kernel_naive<<<grid, threads>>>(h_image, h_input);
+    cudaDeviceSynchronize();
+    memcpy(h_imageref, h_image, image_width * image_height * sizeof(float));
+
     //warm up the device
     for (int i = 0; i < 4*ITERATIONS; i++) {
-        convolvution2d_explicit(h_image, h_scratch, WIDTH + FW - 1, HEIGHT + FH - 1, filterWeight);
+        convolution2d_explicit(h_image, h_input, h_filter);
     }
-    memcpy(h_imageref, h_image, WIDTH * HEIGHT * sizeof(float));
 
     //measure execution time of the explicit implementation
     float time;
     cudaDeviceSynchronize();
     start_timer();
     for (int i = 0; i < ITERATIONS; i++) {
-        convolvution2d_explicit(h_image, h_scratch, WIDTH + FW - 1, HEIGHT + FH - 1, filterWeight);
+        convolution2d_explicit(h_image, h_input, h_filter);
     }
     cudaDeviceSynchronize();
     stop_timer(&time);
     printf("Explicit average time: %.6f ms\n", time/ITERATIONS);
-    compare(h_imageref, h_image, WIDTH * HEIGHT);
+    compare(h_imageref, h_image, image_width * image_height);
 
     //measure execution time of the streams implementation
     cudaDeviceSynchronize();
     start_timer();
     for (int i = 0; i < ITERATIONS; i++) {
-        convolvution2d_streams(h_image, h_scratch, WIDTH + FW - 1, HEIGHT + FH - 1, filterWeight);
+        convolution2d_streams(h_image, h_input, h_filter);
     }
     cudaDeviceSynchronize();
     stop_timer(&time);
     printf("Streams average time: %.6f ms\n", time/ITERATIONS);
-    compare(h_imageref, h_image, WIDTH * HEIGHT);
+    compare(h_imageref, h_image, image_width*image_height);
 
     //cleanup
     cudaFree(d_image);
-    cudaFree(d_scratch);
-    free(h_image);
+    cudaFree(d_input);
+    cudaFreeHost(h_image);
+    cudaFreeHost(h_input);
+    cudaFreeHost(h_filter);
     free(h_imageref);
-    free(h_scratch);
-    free(h_filter);
 
     return 0;
 }
@@ -192,28 +207,28 @@ int main() {
  * no overlap between transfers and/or computation.
  *
  */
-void convolvution2d_explicit(float *image, float *scratch, int scratchWidth, int scratchHeight, float filterWeight) {
+void convolution2d_explicit(float *h_image, float *h_input, float *h_filter) {
     cudaError_t err;
 
-    dim3 threads (BLOCK_X, BLOCK_Y);
+    dim3 threads (block_size_x, block_size_y);
     // for naive kernel use this grid
-    //  dim3 grid( (int)ceilf((float)WIDTH / (float)(BLOCK_X)) , (int)ceilf((float)HEIGHT / (float)(BLOCK_Y))); 
+    //  dim3 grid ((int) ceilf ((float) image_width / (float) (block_size_x)), (int) ceilf ((float) image_height / (float) (block_size_y)));
     // for tiled kernel use this grid
-    dim3 grid ((int) ceilf ((float) WIDTH / (float) (TILE_X * BLOCK_X)), (int) ceilf ((float) HEIGHT / (float) (BLOCK_Y)));
+    dim3 grid ((int) ceilf ((float) image_width / (float) (tile_size_x * block_size_x)), (int) ceilf ((float) image_height / (float) (block_size_y)));
 
-    err = cudaMemcpyToSymbol(d_filter, h_filter, FW * FH * sizeof(float), 0, cudaMemcpyHostToDevice);
+    err = cudaMemcpyToSymbol(d_filter, h_filter, filter_width * filter_height * sizeof(float), 0, cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
-        fprintf (stderr, "Error in cudaMemcpyToSymbolAsync: %s\n", cudaGetErrorString(err));
+        fprintf (stderr, "Error in cudaMemcpyToSymbol filter: %s\n", cudaGetErrorString(err));
     }
 
-    err = cudaMemcpy(d_scratch, scratch, scratchWidth * scratchHeight * sizeof(float), cudaMemcpyHostToDevice);
+    err = cudaMemcpy(d_input, h_input, input_width * input_height * sizeof(float), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
-        fprintf (stderr, "Error in cudaMemcpy host to device scratch: %s\n", cudaGetErrorString (err));
+        fprintf (stderr, "Error in cudaMemcpy host to device input: %s\n", cudaGetErrorString (err));
     }
 
-    convolvution2d_kernel<<<grid, threads>>>(d_image, d_scratch, scratchWidth, scratchHeight, filterWeight);
+    convolution2d_kernel<<<grid, threads>>>(d_image, d_input);
 
-    err = cudaMemcpy(image, d_image, WIDTH * HEIGHT * sizeof(float), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_image, d_image, image_width * image_height * sizeof(float), cudaMemcpyDeviceToHost);
     if (err != cudaSuccess) {
         fprintf (stderr, "Error in cudaMemcpy device to host image: %s\n", cudaGetErrorString (err));
     }
@@ -232,11 +247,11 @@ void convolvution2d_explicit(float *image, float *scratch, int scratchWidth, int
  * in other streams. 
  *
  */
-void convolvution2d_streams(float *image, float *scratch, int scratchWidth, int scratchHeight, float filterWeight) {
+void convolution2d_streams(float *h_image, float *h_input, float *h_filter) {
     cudaError_t err;
 
     // thread block size - no need to change
-    dim3 threads(BLOCK_X, BLOCK_Y);
+    dim3 threads (block_size_x, block_size_y);
 
     /* The number of thread blocks created at kernel launch 
      *
@@ -247,7 +262,7 @@ void convolvution2d_streams(float *image, float *scratch, int scratchWidth, int 
      * thread block size and the tiling factor, which means that a thread block works on an area that is TILE_X
      * times its own size.
      */
-    dim3 grid((int)ceilf((float)WIDTH / (float)(TILE_X * BLOCK_X)), (int)ceilf((float)HEIGHT / (float)(BLOCK_Y)));
+    dim3 grid ((int) ceilf ((float) image_width / (float) (tile_size_x * block_size_x)), (int) ceilf ((float) image_height / (float) (block_size_y)));
 
     /* Host to Device transfer of input data
      *
@@ -256,14 +271,14 @@ void convolvution2d_streams(float *image, float *scratch, int scratchWidth, int 
      * Additionally you should use streams to enable overlap between
      * these transfers and kernel execution and transfers from device to host.
      */
-    err = cudaMemcpyToSymbol(d_filter, h_filter, FW * FH * sizeof(float), 0, cudaMemcpyHostToDevice);
+    err = cudaMemcpyToSymbol(d_filter, h_filter, filter_width * filter_height * sizeof(float), 0, cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
-        fprintf (stderr, "Error in cudaMemcpyToSymbolAsync: %s\n", cudaGetErrorString(err));
+        fprintf (stderr, "Error in cudaMemcpyToSymbol filter: %s\n", cudaGetErrorString(err));
     }
 
-    err = cudaMemcpy(d_scratch, scratch, scratchWidth * scratchHeight * sizeof(float), cudaMemcpyHostToDevice);
+    err = cudaMemcpy(d_input, h_input, input_width * input_height * sizeof(float), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
-        fprintf (stderr, "Error in cudaMemcpy host to device scratch: %s\n", cudaGetErrorString (err));
+        fprintf (stderr, "Error in cudaMemcpy host to device input: %s\n", cudaGetErrorString (err));
     }
 
     /* Calling the kernel
@@ -274,7 +289,7 @@ void convolvution2d_streams(float *image, float *scratch, int scratchWidth, int 
      * Be sure to use offsets to direct the kernel in a stream to the correct part of the input and output
      * data.
      */
-    convolvution2d_kernel<<<grid, threads>>>(d_image, d_scratch, scratchWidth, scratchHeight, filterWeight);
+    convolution2d_kernel<<<grid, threads>>>(d_image, d_input);
 
     /* Device to Host transfers of output data
      *
@@ -282,7 +297,7 @@ void convolvution2d_streams(float *image, float *scratch, int scratchWidth, int 
      * you can start copying the output data back to main memory directly after the kernel in a stream has
      * finished its computations.
      */
-    err = cudaMemcpy(image, d_image, WIDTH * HEIGHT * sizeof(float), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_image, d_image, image_width * image_height * sizeof(float), cudaMemcpyDeviceToHost);
     if (err != cudaSuccess) {
         fprintf (stderr, "Error in cudaMemcpy device to host image: %s\n", cudaGetErrorString (err));
     }
@@ -309,22 +324,22 @@ void convolvution2d_streams(float *image, float *scratch, int scratchWidth, int 
 /*
  * 2D Convolution reference CPU implementation
  */
-void convolvution2d (float *image, float *scratch, float *filter, int scratchWidth, int scratchHeight, float filterWeight) {
+void convolution2d (float *image, float *input, float *filter) {
     int x, y;
     int i, j;
     float sum = 0.0;
 
-    for (y = 0; y < HEIGHT; y++) {
-        for (x = 0; x < WIDTH; x++) {
+    for (y = 0; y < image_height; y++) {
+        for (x = 0; x < image_width; x++) {
             sum = 0.0;
 
-            for (j = 0; j < FH; j++) {
-	            for (i = 0; i < FW; i++) {
-	                sum += scratch[(y + j) * scratchWidth + (x + i)] * filter[j * FH + i];
+            for (j = 0; j < filter_height; j++) {
+	            for (i = 0; i < filter_width; i++) {
+	                sum += input[(y + j) * input_width + (x + i)] * filter[j * filter_width + i];
 	            }
             }
 
-            image[y * WIDTH + x] = sum / filterWeight;
+            image[y * image_width + x] = sum;
         }
     }
 
@@ -334,25 +349,25 @@ void convolvution2d (float *image, float *scratch, float *filter, int scratchWid
  * The following 2D Convolution kernel is a naive implementation
  * used for correctness checks
  */
-__global__ void convolvution2d_kernel_naive(float *image, float *scratch, int scratchWidth, int scratchHeight, float filterWeight) {
-    int x = blockIdx.x * BLOCK_X + threadIdx.x;
-    int y = blockIdx.y * BLOCK_Y + threadIdx.y;
+__global__ void convolution2d_kernel_naive(float *image, float *input) {
+    int x = blockIdx.x * block_size_x + threadIdx.x;
+    int y = blockIdx.y * block_size_y + threadIdx.y;
     int i, j;
     float sum = 0.0;
 
-    if (y * x < HEIGHT * WIDTH) {
-        for (j = 0; j < FH; j++) {
-            for (i = 0; i < FW; i++) {
-	            sum += scratch[(y + j) * scratchWidth + (x + i)] * d_filter[j * FH + i];
+    if (y < image_height && x < image_width) {
+        for (j = 0; j < filter_height; j++) {
+            for (i = 0; i < filter_width; i++) {
+	            sum += input[(y + j) * input_width + (x + i)] * d_filter[j * filter_width + i];
             }
         }
 
-        image[y * WIDTH + x] = sum / filterWeight;
+        image[y * image_width + x] = sum;
     }
 }
 
-#define SHWIDTH (4*BLOCK_X+FW-1)
-#define SHMEMSIZE (SHWIDTH*(BLOCK_Y+FH-1))
+#define SHWIDTH (tile_size_x*block_size_x+filter_width-1)
+#define SHMEMSIZE (SHWIDTH*(block_size_y+filter_height-1))
 
 __shared__ float shared_scratch[SHMEMSIZE];
 
@@ -366,7 +381,7 @@ __shared__ float shared_scratch[SHMEMSIZE];
  *  B. van Werkhoven, J. Maassen, F.J. Seinstra, H.E Bal
  *  Future Generation Computer Systems, Volume 30, 2014
  */
-__global__ void convolvution2d_kernel(float *__restrict__ iPtr, const float *__restrict__ sPtr, int totalWidth, int scratchHeight, float divisor) {
+__global__ void convolution2d_kernel(float *__restrict__ image, const float *__restrict__ input) {
     float sum0 = 0;
     float sum1 = 0;
     float sum2 = 0;
@@ -376,27 +391,26 @@ __global__ void convolvution2d_kernel(float *__restrict__ iPtr, const float *__r
     int ty = threadIdx.y;
     int tx = threadIdx.x;
 
-    //set scratch to point to start of scratch for this block
-    sPtr += (ty + blockIdx.y * BLOCK_Y) * totalWidth + 4 * blockIdx.x * BLOCK_X + tx;
-    iPtr += (ty + blockIdx.y * BLOCK_Y) * WIDTH + 4 * blockIdx.x * BLOCK_X + tx;
+    //set input to point to start of input for this block
+    input += (ty + blockIdx.y * block_size_y) * input_width + tile_size_x * blockIdx.x * block_size_x + tx;
+    image += (ty + blockIdx.y * block_size_y) * image_width + tile_size_x * blockIdx.x * block_size_x + tx;
 
     //coalsced global memory loads
-    //since there are more elements than threads there is some branching here
     sindex = ty * SHWIDTH + tx;
 
-    shared_scratch[sindex] = LDG(sPtr);
-    shared_scratch[sindex + 1 * BLOCK_X] = LDG(sPtr + 1 * BLOCK_X);
-    shared_scratch[sindex + 2 * BLOCK_X] = LDG(sPtr + 2 * BLOCK_X);
-    shared_scratch[sindex + 3 * BLOCK_X] = LDG(sPtr + 3 * BLOCK_X);
-    shared_scratch[sindex + 4 * BLOCK_X] = LDG(sPtr + 4 * BLOCK_X);
+    shared_scratch[sindex] = LDG(input);
+    shared_scratch[sindex + 1 * block_size_x] = LDG(input + 1 * block_size_x);
+    shared_scratch[sindex + 2 * block_size_x] = LDG(input + 2 * block_size_x);
+    shared_scratch[sindex + 3 * block_size_x] = LDG(input + 3 * block_size_x);
+    shared_scratch[sindex + 4 * block_size_x] = LDG(input + 4 * block_size_x);
 
-    sindex += BLOCK_Y * SHWIDTH;
-    sPtr += BLOCK_Y * totalWidth;
-    shared_scratch[sindex] = LDG(sPtr);
-    shared_scratch[sindex + 1 * BLOCK_X] = LDG(sPtr + 1 * BLOCK_X);
-    shared_scratch[sindex + 2 * BLOCK_X] = LDG(sPtr + 2 * BLOCK_X);
-    shared_scratch[sindex + 3 * BLOCK_X] = LDG(sPtr + 3 * BLOCK_X);
-    shared_scratch[sindex + 4 * BLOCK_X] = LDG(sPtr + 4 * BLOCK_X);
+    sindex += block_size_y * SHWIDTH;
+    input += block_size_y * input_width;
+    shared_scratch[sindex] = LDG(input);
+    shared_scratch[sindex + 1 * block_size_x] = LDG(input + 1 * block_size_x);
+    shared_scratch[sindex + 2 * block_size_x] = LDG(input + 2 * block_size_x);
+    shared_scratch[sindex + 3 * block_size_x] = LDG(input + 3 * block_size_x);
+    shared_scratch[sindex + 4 * block_size_x] = LDG(input + 4 * block_size_x);
 
     __syncthreads();
     sindex = ty * SHWIDTH + tx;
@@ -406,27 +420,27 @@ __global__ void convolvution2d_kernel(float *__restrict__ iPtr, const float *__r
     int i = 0;
     int j = 0;
 #pragma unroll
-    for (j = 0; j < FH; j++) {
+    for (j = 0; j < filter_height; j++) {
 #pragma unroll
-        for (i = 0; i < FW; i++) {
+        for (i = 0; i < filter_width; i++) {
             sum0 += shared_scratch[sindex] * d_filter[kindex];
-            sum1 += shared_scratch[sindex + 1 * BLOCK_X] * d_filter[kindex];
-            sum2 += shared_scratch[sindex + 2 * BLOCK_X] * d_filter[kindex];
-            sum3 += shared_scratch[sindex + 3 * BLOCK_X] * d_filter[kindex];
+            sum1 += shared_scratch[sindex + 1 * block_size_x] * d_filter[kindex];
+            sum2 += shared_scratch[sindex + 2 * block_size_x] * d_filter[kindex];
+            sum3 += shared_scratch[sindex + 3 * block_size_x] * d_filter[kindex];
             sindex++;
             kindex++;
         }
-        sindex = sindex - FW + SHWIDTH;
+        sindex = sindex - filter_width + SHWIDTH;
     }
 
     //global memory store
-    *iPtr = sum0 / divisor;
-    iPtr += BLOCK_X;
-    *iPtr = sum1 / divisor;
-    iPtr += BLOCK_X;
-    *iPtr = sum2 / divisor;
-    iPtr += BLOCK_X;
-    *iPtr = sum3 / divisor;
+    *image = sum0;
+    image += block_size_x;
+    *image = sum1;
+    image += block_size_x;
+    *image = sum2;
+    image += block_size_x;
+    *image = sum3;
 }
 
 
