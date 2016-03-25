@@ -248,7 +248,6 @@ void convolution2d_explicit(float *h_image, float *h_input, float *h_filter) {
  *
  */
 void convolution2d_streams(float *h_image, float *h_input, float *h_filter) {
-    cudaError_t err;
 
     // thread block size - no need to change
     dim3 threads (block_size_x, block_size_y);
