@@ -1,0 +1,4 @@
+*.o
+*.py[cod]
+__pycache__
+vector_add/vector_add
