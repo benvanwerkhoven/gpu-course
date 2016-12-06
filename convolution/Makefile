@@ -1,4 +1,4 @@
-CFLAGS = -O3
+CFLAGS = -O3 -Wno-deprecated-gpu-targets
 CC = nvcc
 
 all: convolution

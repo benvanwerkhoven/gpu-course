@@ -3,6 +3,8 @@
 extern "C" {
     void start_timer();
     void stop_timer(float *time);
+    __global__ void convolution_kernel(float *output, float *input, float *filter);
+    __global__ void convolution_kernel_naive(float *output, float *input, float *filter);
 }
 
 int compare_arrays(float *c, float *d, int n);
@@ -39,7 +41,7 @@ void convolve(float *output, float *input, float *filter) {
 }
 
 
-__global__ void convolution_kernel(float *output, float *input, float *filter) {
+__global__ void convolution_kernel_naive(float *output, float *input, float *filter) {
     //for each pixel in the output image
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -60,7 +62,7 @@ __global__ void convolution_kernel(float *output, float *input, float *filter) {
 }
 
 
-__global__ void convolution_kernel_shared_mem(float *output, float *input, float *filter) {
+__global__ void convolution_kernel(float *output, float *input, float *filter) {
     int ty = threadIdx.y;
     int tx = threadIdx.x;
     int by = blockIdx.y * block_size_y;
@@ -160,10 +162,10 @@ int main() {
     //measure the GPU function
     cudaDeviceSynchronize();
     start_timer();
-    convolution_kernel<<<grid, threads>>>(d_output, d_input, d_filter);
+    convolution_kernel_naive<<<grid, threads>>>(d_output, d_input, d_filter);
     cudaDeviceSynchronize();
     stop_timer(&time);
-    printf("convolution_kernel took %.3f ms\n", time);
+    printf("convolution_kernel_naive took %.3f ms\n", time);
 
     //check to see if all went well
     err = cudaGetLastError();
@@ -189,10 +191,10 @@ int main() {
 
     //measure the GPU function
     start_timer();
-    convolution_kernel_shared_mem<<<grid, threads>>>(d_output, d_input, d_filter);
+    convolution_kernel<<<grid, threads>>>(d_output, d_input, d_filter);
     cudaDeviceSynchronize();
     stop_timer(&time);
-    printf("convolution_kernel_shared_mem took %.3f ms\n", time);
+    printf("convolution_kernel took %.3f ms\n", time);
 
     //check to see if all went well
     err = cudaGetLastError();
