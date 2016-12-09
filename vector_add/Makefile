@@ -1,4 +1,4 @@
-CFLAGS = -O3 --Wno-deprecated-gpu-targets
+CFLAGS = -O3
 CC = nvcc
 
 all: vector_add
