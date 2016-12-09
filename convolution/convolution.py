@@ -34,26 +34,39 @@ def convolution_example(context):
     devprops = { str(k): v for (k, v) in context.get_device().get_attributes().items() }
     cc = str(devprops['COMPUTE_CAPABILITY_MAJOR']) + str(devprops['COMPUTE_CAPABILITY_MINOR'])
 
-    #compile the kernel
-    convolution = SourceModule(kernel_string, arch='compute_' + cc, code='sm_' + cc,
-                    cache_dir=False, no_extern_c=True).get_function("convolution_kernel")
+    #compile the kernels
+    module = SourceModule(kernel_string, arch='compute_' + cc, code='sm_' + cc,
+                    cache_dir=False, no_extern_c=True)
+    convolution = module.get_function("convolution_kernel")
+    convolution_naive = module.get_function("convolution_kernel_naive")
 
-    #launch the kernel
+    #setup thread block sizes
     threads = (32, 16, 1)
     grid = (int(numpy.ceil(image_width/float(threads[0]))), int(numpy.ceil(image_height/float(threads[1]))), 1)
-    convolution(*gpu_args, block=threads, grid=grid, stream=None, shared=0)
-
-    #copy output data back from GPU
-    drv.memcpy_dtoh(output_image, gpu_args[0])
 
     #compute reference using naive kernel
     reference = numpy.zeros_like(output_image)
-    convolution_naive = SourceModule(kernel_string, arch='compute_' + cc, code='sm_' + cc,
-                    cache_dir=False, no_extern_c=True).get_function("convolution_kernel_naive")
-    gpu_args[0] = drv.mem_alloc(reference.nbytes)
-    drv.memcpy_htod(gpu_args[0], reference)
+    start = drv.Event()
+    end = drv.Event()
+    context.synchronize()
+    start.record()
     convolution_naive(*gpu_args, block=threads, grid=grid, stream=None, shared=0)
+    end.record()
+    context.synchronize()
+    print("convolution_kernel_naive took", end.time_since(start), "ms.")
     drv.memcpy_dtoh(reference, gpu_args[0])
+    drv.memcpy_htod(gpu_args[0], output_image)
+
+    #launch the kernel
+    context.synchronize()
+    start.record()
+    convolution(*gpu_args, block=threads, grid=grid, stream=None, shared=0)
+    end.record()
+    context.synchronize()
+    print("convolution_kernel took", end.time_since(start), "ms.")
+
+    #copy output data back from GPU
+    drv.memcpy_dtoh(output_image, gpu_args[0])
 
     #compare output with reference
     correct = numpy.allclose(output_image, reference, atol=1e-6)
