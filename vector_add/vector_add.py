@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
+from timeit import default_timer as timer
 import numpy
 import pycuda.driver as drv
 from pycuda.compiler import SourceModule
@@ -12,6 +13,12 @@ def vector_add_example(context):
     a = numpy.random.randn(n).astype(numpy.float32)
     b = numpy.random.randn(n).astype(numpy.float32)
     c = numpy.zeros_like(b)
+
+    #measure CPU time
+    start = timer()
+    d = a+b
+    end = timer()
+    print("a+b took", (end-start)*1000.0, "ms")
 
     #move data to the GPU
     args = [c, a, b]
@@ -36,7 +43,16 @@ def vector_add_example(context):
     #launch the kernel
     threads = (1024, 1, 1)
     grid = (int(numpy.ceil(n/float(threads[0]))), 1, 1)
+
+    context.synchronize()
+    start = drv.Event()
+    end = drv.Event()
+    start.record()
     vector_add(*gpu_args, block=threads, grid=grid, stream=None, shared=0)
+    end.record()
+    context.synchronize()
+
+    print("vec_add_kernel took", end.time_since(start), "ms.")
 
     #copy output data back from GPU
     drv.memcpy_dtoh(c, gpu_args[0])
