@@ -103,7 +103,7 @@ int main() {
     // transfer vertices to d_vertices
     err = cudaMemcpy(d_vertices, h_vertices, VERTICES*sizeof(float2), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
-        fprintf(stderr, "Error in cudaMemcpyToSymbol: %s\n", cudaGetErrorString(err));
+        fprintf(stderr, "Error in cudaMemcpy: %s\n", cudaGetErrorString(err));
     }
 
     // create CUDA streams and events
