@@ -13,7 +13,7 @@ def reduction_exercise(context):
 
     #create input data
     n = numpy.int32(5e7)
-    in_array = numpy.random.randn(n).astype(numpy.float32) + 1.0
+    in_array = numpy.random.randn(n).astype(numpy.float32) + 0.00000001
     out_array = numpy.zeros(num_blocks).astype(numpy.float32)
 
     #measure CPU time
@@ -23,12 +23,13 @@ def reduction_exercise(context):
     print("numpy.sum took", (end-start)*1000.0, "ms")
 
     #move data to the GPU
-    args = [out_array, in_array, n]
+    args = [out_array, in_array]
     gpu_args = []
     for arg in args:
         gpu_args.append(drv.mem_alloc(arg.nbytes))
         drv.memcpy_htod(gpu_args[-1], arg)
     gpu_args.append(n)
+    gpu_args2 = [gpu_args[0], gpu_args[0], numpy.int32(num_blocks)]
 
     #read kernel into string
     with open('reduction.cu', 'r') as f:
@@ -51,6 +52,7 @@ def reduction_exercise(context):
     end = drv.Event()
     start.record()
     reduce_kernel(*gpu_args, block=threads, grid=grid, stream=None, shared=0)
+    reduce_kernel(*gpu_args2, block=threads, grid=(1,1), stream=None, shared=0)
     end.record()
     context.synchronize()
 

@@ -10,19 +10,34 @@ extern "C" {
     __global__ void reduce_kernel(float *out_array, float *in_array, int n);
 }
 
-void sum_floats(float *out, float *in, int n) {
+//a naive summation in C
+float sum_floats(float *in_array, int n) {
     float sum = 0.0;
     for (int i=0; i<n; i++) {
-        sum += in[i];
+        sum += in_array[i];
     }
-    *out = sum;
+    return sum;
 }
 
+//Kahan summation to avoid floating-point precision errors
+float sum_floats_kahan(float *in_array, int n) {
+    float sum = 0.0;
+    float c = 0.0;
+    for (int i=0; i<n; i++) {
+        float v = in_array[i] - c;
+        float t = sum + v;
+        c = (t - sum) - v;
+        sum = t;
+    }
+    return sum;
+}
+
+//CUDA kernel for parallel reduction
 __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
 
     int ti = threadIdx.x;
     int x = blockIdx.x * block_size_x + threadIdx.x;
-    int step_size = num_blocks * block_size_x;
+    int step_size = gridDim.x * block_size_x;
     float sum = 0.0f;
 
     //cooperatively (with all threads in all thread blocks) iterate over input array
@@ -41,7 +56,7 @@ __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
 
     //make every thread store its thread-local sum to the array in shared memory
     //... = sum;
-
+    
     //now let's call syncthreads() to make sure all threads have finished
     //storing their local sums to shared memory
     __syncthreads();
@@ -64,7 +79,6 @@ __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
         //be careful that values that should be read are
         //not overwritten before they are read
         //make sure to call __syncthreads() when needed
-
     }
 
     //write back one value per thread block
@@ -76,7 +90,7 @@ __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
 
 int main() {
 
-    int n = 5e7; //problem size
+    int n = (int)5e7; //problem size
     float time;
     cudaError_t err;
 
@@ -84,14 +98,13 @@ int main() {
     float *in_array = (float *) malloc(n * sizeof(float));
     float *out_array = (float *) malloc(num_blocks * sizeof(float));
     for (int i=0; i<n; i++) {
-        in_array[i] = 1.0 + 1.0 / rand();
+        in_array[i] = (rand() % 10000) / 100000.0;
     }
     memset(out_array, 0, num_blocks * sizeof(float));
 
     //measure the CPU function
-    float sum = 0.0;
     start_timer();
-    sum_floats(&sum, in_array, n);
+    float sum = sum_floats(in_array, n);
     stop_timer(&time);
     printf("sum_floats took %.3f ms\n", time);
 
@@ -132,14 +145,18 @@ int main() {
     err = cudaMemcpy(out_array, d_out, 1*sizeof(float), cudaMemcpyDeviceToHost);
     if (err != cudaSuccess) fprintf(stderr, "Error in cudaMemcpy device to host: %s\n", cudaGetErrorString( err ));
 
-    //check the result
-    float diff = abs(*out_array - sum);
-    printf("diff=%f\n", diff);
+    //compute a reliable reference answer on the host
+    float sum2 = sum_floats_kahan(in_array, n);
 
-    if (diff > 10.0) {
-        printf("TEST FAILED!\n");
-    } else {
+    //check the result
+    float diff = abs(*out_array - sum2);
+    printf("cpu: %f, corrected: %f\n", sum, sum2);
+    printf("gpu: %f\n", *out_array);
+
+    if (diff < 1.0) {
         printf("TEST PASSED!\n");
+    } else {
+        printf("TEST FAILED!\n");
     }
 
     //clean up
