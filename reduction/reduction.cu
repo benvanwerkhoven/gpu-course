@@ -54,17 +54,15 @@ __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
     #pragma unroll
     for (unsigned int s=block_size_x/2; s>0; s/=2) {
 
-        //you are to finish the code inside this loop such that
+        //you are to write the code inside this loop such that
         //threads will add the sums of other threads that are 's' away
-        //do this iteratively to reduce to a single value
+        //do this iteratively such that together the threads compute the
+        //sum of all thread-local sums 
 
         //use shared memory to access the values of other threads
-        //and store the new value in shared memory as well
-        //to be used for the next round
-
+        //and store the new value in shared memory to be used in the next round
         //be careful that values that should be read are
         //not overwritten before they are read
-
         //make sure to call __syncthreads() when needed
 
     }

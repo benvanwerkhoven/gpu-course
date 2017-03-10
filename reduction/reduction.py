@@ -6,22 +6,24 @@ import numpy
 import pycuda.driver as drv
 from pycuda.compiler import SourceModule
 
-def vector_add_example(context):
+def reduction_exercise(context):
+
+    block_size_x = 256
+    num_blocks = 1024
 
     #create input data
     n = numpy.int32(5e7)
-    a = numpy.random.randn(n).astype(numpy.float32)
-    b = numpy.random.randn(n).astype(numpy.float32)
-    c = numpy.zeros_like(b)
+    in_array = numpy.random.randn(n).astype(numpy.float32) + 1.0
+    out_array = numpy.zeros(num_blocks).astype(numpy.float32)
 
     #measure CPU time
     start = timer()
-    d = a+b
+    npsum = numpy.sum(in_array)
     end = timer()
-    print("a+b took", (end-start)*1000.0, "ms")
+    print("numpy.sum took", (end-start)*1000.0, "ms")
 
     #move data to the GPU
-    args = [c, a, b]
+    args = [out_array, in_array, n]
     gpu_args = []
     for arg in args:
         gpu_args.append(drv.mem_alloc(arg.nbytes))
@@ -29,7 +31,7 @@ def vector_add_example(context):
     gpu_args.append(n)
 
     #read kernel into string
-    with open('vector_add.cu', 'r') as f:
+    with open('reduction.cu', 'r') as f:
         kernel_string = f.read()
 
     #get compute capability for compiling CUDA kernels
@@ -37,32 +39,33 @@ def vector_add_example(context):
     cc = str(devprops['COMPUTE_CAPABILITY_MAJOR']) + str(devprops['COMPUTE_CAPABILITY_MINOR'])
 
     #compile the kernel
-    vector_add = SourceModule(kernel_string, arch='compute_' + cc, code='sm_' + cc,
-                    cache_dir=False, no_extern_c=True).get_function("vec_add_kernel")
+    reduce_kernel = SourceModule(kernel_string, arch='compute_' + cc, code='sm_' + cc,
+                    cache_dir=False, no_extern_c=True).get_function("reduce_kernel")
 
     #launch the kernel
-    threads = (1024, 1, 1)
-    grid = (int(numpy.ceil(n/float(threads[0]))), 1, 1)
+    threads = (block_size_x, 1, 1)
+    grid = (num_blocks, 1, 1)
 
     context.synchronize()
     start = drv.Event()
     end = drv.Event()
     start.record()
-    vector_add(*gpu_args, block=threads, grid=grid, stream=None, shared=0)
+    reduce_kernel(*gpu_args, block=threads, grid=grid, stream=None, shared=0)
     end.record()
     context.synchronize()
 
-    print("vec_add_kernel took", end.time_since(start), "ms.")
+    print("reduction_kernel took", end.time_since(start), "ms.")
 
     #copy output data back from GPU
-    drv.memcpy_dtoh(c, gpu_args[0])
+    gpu_sum = numpy.zeros(1).astype(numpy.float32)
+    drv.memcpy_dtoh(gpu_sum, gpu_args[0])
 
     #compare output with reference
-    correct = numpy.allclose(c, a+b, atol=1e-6)
+    correct = numpy.absolute(npsum - gpu_sum) < 10.0
     if not correct:
         print("TEST FAILED!")
-        print(c)
-        print(a+b)
+        print(npsum)
+        print(gpu_sum)
     else:
         print("TEST PASSED!")
 
@@ -73,6 +76,6 @@ if __name__ == "__main__":
     drv.init()
     context = drv.Device(0).make_context()
     try:
-        vector_add_example(context)
+        reduction_exercise(context)
     finally:
         context.pop()
