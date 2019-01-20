@@ -15,8 +15,10 @@ void vec_add(float *c, float *a, float *b, int n) {
 }
 
 __global__ void vec_add_kernel(float *c, float *a, float *b, int n) {
-    int i = 0;   // Oops! Something is not right here, please fix it!
-    if (i < n) {
+    //int i = 0;   // Oops! Something is not right here, please fix it!
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+	for(int i = index; i < n; i+=stride) {
         c[i] = a[i] + b[i];
     }
 }
