@@ -96,12 +96,6 @@ int main() {
     FILE *file = fopen("vertices.dat", "rb");
     fread(h_vertices, sizeof(float), 2*VERTICES, file);
 
-    // allocate constant memory for storing the vertices
-    /*err = cudaMalloc((void **)&c_vertices, VERTICES*sizeof(float2));
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Error in cudaMalloc: %s\n", cudaGetErrorString( err ));
-    }*/
-
     // transfer vertices to c_vertices
     err = cudaMemcpyToSymbol(c_vertices, h_vertices, VERTICES*sizeof(float2));
     if (err != cudaSuccess) {
