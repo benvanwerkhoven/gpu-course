@@ -81,9 +81,10 @@ __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
         //be careful that values that should be read are
         //not overwritten before they are read
         //make sure to call __syncthreads() when needed
-        if (ti + s < block_size_x) {
-            thread_sum[ti] = thread_sum[ti+s];
+        if (ti < s) {
+            thread_sum[ti] += thread_sum[ti+s];
         }
+        __syncthreads();
     }
 
     //write back one value per thread block
