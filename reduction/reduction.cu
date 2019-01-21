@@ -53,9 +53,11 @@ __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
 
     //declare shared memory array, how much shared memory do we need?
     //__shared__ float ...;
+    __shared__ float thread_sum[block_size_x];
 
     //make every thread store its thread-local sum to the array in shared memory
     //... = sum;
+    thread_sum[ti] = sum;
     
     //now let's call syncthreads() to make sure all threads have finished
     //storing their local sums to shared memory
@@ -79,11 +81,15 @@ __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
         //be careful that values that should be read are
         //not overwritten before they are read
         //make sure to call __syncthreads() when needed
+        if (ti + s < block_size_x) {
+            thread_sum[ti] = thread_sum[ti+s];
+        }
     }
 
     //write back one value per thread block
     if (ti == 0) {
         //out_array[blockIdx.x] = ;  //store the per-thread block reduced value to global memory
+        out_array[blockIdx.x] = thread_sum[ti];
     }
 }
 
