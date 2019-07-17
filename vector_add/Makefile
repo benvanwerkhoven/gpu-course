@@ -1,4 +1,4 @@
-CFLAGS = -O3
+CFLAGS = -O3 --std=c++11
 CC = nvcc
 
 #insert the ignore for deprecated gpu targets if using CUDA 8.0
@@ -6,8 +6,8 @@ CFLAGS += $(shell if [ `nvcc --version | grep 8.0 | wc -l` != 0 ]; then echo -Wn
 
 all: vector_add
 
-vector_add: timer.o vector_add.o
-	$(CC) $(CFLAGS) -o vector_add timer.o vector_add.o
+vector_add: vector_add.o
+	$(CC) $(CFLAGS) -o $@ $<
 
 clean:
 	rm -f *.o vector_add

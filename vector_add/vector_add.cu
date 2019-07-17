@@ -1,10 +1,6 @@
 #include <stdio.h>
+#include <chrono>
 
-extern "C" {
-    void start_timer();
-    void stop_timer(float *time);
-    __global__ void vec_add_kernel(float *c, float *a, float *b, int n);
-}
 
 int compare_arrays(float *c, float *d, int n);
 
@@ -14,7 +10,7 @@ void vec_add(float *c, float *a, float *b, int n) {
     }
 }
 
-__global__ void vec_add_kernel(float *c, float *a, float *b, int n) {
+extern "C" __global__ void vec_add_kernel(float *c, float *a, float *b, int n) {
     int i = 0;   // Oops! Something is not right here, please fix it!
     if (i < n) {
         c[i] = a[i] + b[i];
@@ -25,7 +21,6 @@ __global__ void vec_add_kernel(float *c, float *a, float *b, int n) {
 int main() {
 
     int n = 5e7; //problem size
-    float time;
     cudaError_t err;
 
     //allocate arrays and fill them
@@ -41,10 +36,12 @@ int main() {
     }
 
     //measure the CPU function
-    start_timer();
+    auto start = std::chrono::high_resolution_clock::now();
     vec_add(c, a, b, n);
-    stop_timer(&time);
+    auto stop = std::chrono::high_resolution_clock::now();
+    float time = (float)std::chrono::duration_cast<std::chrono::microseconds>(stop-start).count()/1000.0;
     printf("vec_add took %.3f ms\n", time);
+
 
     //allocate GPU memory
     float *d_a; float *d_b; float *d_c;
@@ -73,10 +70,11 @@ int main() {
 
     //measure the GPU function
     cudaDeviceSynchronize();
-    start_timer();
+    start = std::chrono::high_resolution_clock::now();
     vec_add_kernel<<<grid, threads>>>(d_c, d_a, d_b, n);
     cudaDeviceSynchronize();
-    stop_timer(&time);
+    stop = std::chrono::high_resolution_clock::now();
+    time = (float)std::chrono::duration_cast<std::chrono::microseconds>(stop-start).count()/1000.0;
     printf("vec_add_kernel took %.3f ms\n", time);
 
     //check to see if all went well
@@ -94,7 +92,6 @@ int main() {
     } else {
         printf("TEST PASSED!\n");
     }
-
 
     //clean up
     cudaFree(d_a);
