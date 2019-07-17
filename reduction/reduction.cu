@@ -1,14 +1,10 @@
 #include <stdio.h>
+#include <chrono>
 
 #define block_size_x 256
 #define num_blocks 1024
 
 
-extern "C" {
-    void start_timer();
-    void stop_timer(float *time);
-    __global__ void reduce_kernel(float *out_array, float *in_array, int n);
-}
 
 //a naive summation in C
 float sum_floats(float *in_array, int n) {
@@ -33,7 +29,7 @@ float sum_floats_kahan(float *in_array, int n) {
 }
 
 //CUDA kernel for parallel reduction
-__global__ void reduce_kernel(float *out_array, float *in_array, int n) {
+extern "C" __global__ void reduce_kernel(float *out_array, float *in_array, int n) {
 
     int ti = threadIdx.x;
     int x = blockIdx.x * block_size_x + threadIdx.x;
@@ -103,9 +99,10 @@ int main() {
     memset(out_array, 0, num_blocks * sizeof(float));
 
     //measure the CPU function
-    start_timer();
+    auto start = std::chrono::high_resolution_clock::now();
     float sum = sum_floats(in_array, n);
-    stop_timer(&time);
+    auto stop = std::chrono::high_resolution_clock::now();
+    time = (float)std::chrono::duration_cast<std::chrono::microseconds>(stop-start).count()/1000.0;
     printf("sum_floats took %.3f ms\n", time);
 
     //allocate GPU memory
@@ -130,11 +127,12 @@ int main() {
 
     //measure the GPU function
     cudaDeviceSynchronize();
-    start_timer();
+    start = std::chrono::high_resolution_clock::now();
     reduce_kernel<<<grid, threads>>>(d_out, d_in, n);
     reduce_kernel<<<grid2, threads>>>(d_out, d_out, num_blocks); //call the kernel again with only 1 thread block
     cudaDeviceSynchronize();
-    stop_timer(&time);
+    stop = std::chrono::high_resolution_clock::now();
+    time = (float)std::chrono::duration_cast<std::chrono::microseconds>(stop-start).count()/1000.0;
     printf("reduce_kernel took %.3f ms\n", time);
 
     //check to see if all went well
