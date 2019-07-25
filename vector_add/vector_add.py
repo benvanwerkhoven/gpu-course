@@ -38,7 +38,7 @@ def vector_add_example(context):
 
     #compile the kernel
     vector_add = SourceModule(kernel_string, arch='compute_' + cc, code='sm_' + cc,
-                    cache_dir=False, no_extern_c=True).get_function("vec_add_kernel")
+                    cache_dir=False, no_extern_c=True, options=['-Xcompiler=--std=c++11']).get_function("vec_add_kernel")
 
     #launch the kernel
     threads = (1024, 1, 1)
