@@ -59,6 +59,7 @@ int main() {
     cudaDeviceSynchronize();
 
     cudaError_t err;
+    int stat;
     int num_points = (int)2e7;
 
     float2 *h_vertices;
@@ -92,7 +93,10 @@ int main() {
     }
     // read vertices from disk
     FILE *file = fopen("vertices.dat", "rb");
-    fread(h_vertices, sizeof(float), 2*VERTICES, file);
+    stat = fread(h_vertices, sizeof(float), 2*VERTICES, file);
+    if (stat < 2*VERTICES) {
+        fprintf(stderr, "Error in fread()\n");
+    }
 
     // allocate device memory for storing the vertices
     err = cudaMalloc((void **)&d_vertices, VERTICES*sizeof(float2));
@@ -180,9 +184,13 @@ int main() {
         fprintf(stderr, "Error after CUDA kernel: %s\n", cudaGetErrorString(err));
         exit(1);
     } else {
+        int zeros = 0;
         int errors = 0;
         int print = 0;
         for (int i=0; i<num_points; i++) {
+            if (h_reference[i] == 0) {
+                zeros++;
+            }
             if (h_bitmap[i] != h_reference[i]) {
                 errors++;
                 if (print++ < 10) {
@@ -190,10 +198,14 @@ int main() {
                 }
             }
         }
-        if (errors == 0) {
-            printf("ok!\n");
+        if (zeros == num_points) {
+            printf("Error: reference output is only zeros\n");
         } else {
-            printf("there were %d errors\n", errors);
+            if (errors == 0) {
+                printf("ok!\n");
+            } else {
+                printf("there were %d errors\n", errors);
+            }
         }
     }
 
@@ -227,7 +239,7 @@ int main() {
 /*
  * Reference kernel
  *
- * This kernel is kept for checking the output of the above kernel, DO NOT MODIFY THIS KERNEL
+ * This kernel is kept for checking the output of the above kernel, PLEASE DO NOT MODIFY THIS KERNEL
  */
 __global__ void cn_pnpoly_reference_kernel(int *bitmap, float2 *points, float2 *vertices, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
