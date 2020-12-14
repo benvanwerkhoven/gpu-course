@@ -27,6 +27,7 @@ def run_pnpoly(context, cc):
     points = allocate(2*size, numpy.float32)
     bitmap = allocate(size, numpy.int32)
     vertices = allocate(2*vertices, numpy.float32)
+    # HINT: need to reference constant memory
     d_bitmap = numpy.intp(bitmap.base.get_device_pointer())
     d_points = numpy.intp(points.base.get_device_pointer())
 
@@ -39,6 +40,7 @@ def run_pnpoly(context, cc):
 
     #copy from host memory to GPU device memory
     drv.memcpy_htod(d_vertices, vertices)
+    # HINT: need to also copy memory to constant array
 
     #kernel arguments
     gpu_args = [d_bitmap, d_points, d_vertices, size]
