@@ -4,6 +4,8 @@
 
 #define VERTICES 600
 
+__constant__ float2 c_vertices[VERTICES];
+
 extern "C" {
     __global__ void cn_pnpoly(int *bitmap, float2 *points, float2 *vertices, int n);
     __global__ void cn_pnpoly_reference_kernel(int *bitmap, float2 *points, float2 *vertices, int n);
@@ -31,8 +33,8 @@ __global__ void cn_pnpoly(int *bitmap, float2 *points, float2 *vertices, int n) 
         int k = VERTICES-1;
 
         for (int j=0; j<VERTICES; k = j++) {    // edge from vk to vj
-            float2 vj = vertices[j]; 
-            float2 vk = vertices[k]; 
+            float2 vj = c_vertices[j]; 
+            float2 vk = c_vertices[k]; 
 
             float slope = (vk.x-vj.x) / (vk.y-vj.y);
 
@@ -105,6 +107,7 @@ int main() {
     }
 
     // transfer vertices to d_vertices
+    err = cudaMemcpyToSymbol(c_vertices, h_vertices, VERTICES*sizeof(float2), 0, cudaMemcpyHostToDevice);
     err = cudaMemcpy(d_vertices, h_vertices, VERTICES*sizeof(float2), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
         fprintf(stderr, "Error in cudaMemcpy: %s\n", cudaGetErrorString(err));

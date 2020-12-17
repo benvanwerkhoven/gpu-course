@@ -27,9 +27,12 @@ local_averages(A, B1, N)
 # We will specify the tunable parameters of this kernel using a dictionary
 tune_params = OrderedDict()
 
-# Using the special name "block_size_x" we can specify what values 
+# Using the special name "block_size_x" we can specify what values
 # Kernel Tuner should use for the number of threads per block in the x-dimension
-tune_params["block_size_x"] = [1024]
+tune_params["block_size_x"] = [256, 512, 1024]
+tune_params["vecsize"] = [1, 4]
+tune_params["use_division"] = [0, 1]
+
 
 # We can also specify how Kernel Tuner should compute performance metrics
 metrics = OrderedDict(GFLOPs=lambda p: (N/4*5/1e9)/(p["time"]/1e3))
