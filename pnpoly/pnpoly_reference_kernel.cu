@@ -3,6 +3,10 @@
  *
  * This kernel is kept for checking the output of the above kernel, PLEASE DO NOT MODIFY THIS KERNEL
  */
+#ifndef VERTICES
+#define VERTICES 600
+#endif
+
 extern "C"
 __global__ void cn_pnpoly_reference_kernel(int *bitmap, float2 *points, float2 *vertices, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
